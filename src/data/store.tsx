@@ -199,6 +199,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   /* ---------- рисование связей созвездий ---------- */
   const [lineDrawing, setLineDrawing] = useState<{ constellationId: string; pending: string | null } | null>(null);
+  const lineDrawingRef = useRef(lineDrawing);
+  lineDrawingRef.current = lineDrawing;
 
   const startLineDrawing = useCallback((constellationId: string) => {
     setLineDrawing((cur) => (cur?.constellationId === constellationId ? null : { constellationId, pending: null }));
@@ -208,27 +210,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const lineClick = useCallback(
     (starId: string) => {
-      setLineDrawing((cur) => {
-        if (!cur) return cur;
-        const c = dataRef.current.constellations.find((x) => x.id === cur.constellationId);
-        if (!c || !c.stars.some((s) => s.id === starId)) return cur;
-        if (!cur.pending) {
-          return { ...cur, pending: starId };
-        }
-        if (cur.pending === starId) {
-          return { ...cur, pending: null }; // клик по той же звезде — сброс выбора
-        }
-        const [a, b] = [cur.pending, starId];
-        const has = c.lines.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
-        const lines: [string, string][] = has
-          ? c.lines.filter(([x, y]) => !((x === a && y === b) || (x === b && y === a)))
-          : [...c.lines, [a, b]];
-        setData((d) => ({
-          ...d,
-          constellations: d.constellations.map((cc) => (cc.id === c.id ? { ...cc, lines } : cc)),
-        }));
-        return { ...cur, pending: starId }; // следующее ребро от последней звезды
-      });
+      const cur = lineDrawingRef.current;
+      if (!cur) return;
+      const c = dataRef.current.constellations.find((x) => x.id === cur.constellationId);
+      if (!c || !c.stars.some((s) => s.id === starId)) return;
+
+      if (!cur.pending) {
+        setLineDrawing({ ...cur, pending: starId });
+        return;
+      }
+      if (cur.pending === starId) {
+        setLineDrawing({ ...cur, pending: null }); // клик по той же звезде — сброс выбора
+        return;
+      }
+
+      const [a, b] = [cur.pending, starId];
+      const has = c.lines.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+      const lines: [string, string][] = has
+        ? c.lines.filter(([x, y]) => !((x === a && y === b) || (x === b && y === a)))
+        : [...c.lines, [a, b]];
+      setData((d) => ({
+        ...d,
+        constellations: d.constellations.map((cc) => (cc.id === c.id ? { ...cc, lines } : cc)),
+      }));
+      setLineDrawing({ constellationId: cur.constellationId, pending: starId }); // следующее ребро от последней звезды
     },
     [],
   );

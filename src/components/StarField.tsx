@@ -276,8 +276,11 @@ export default function StarField({
                         onPointerEnter={() => onHover(s.id)}
                         onPointerLeave={() => onHover(null)}
                         onPointerDown={(e) => {
-                          if (!editMode || isDrawing) return;
+                          if (!editMode) return;
+                          // ВАЖНО: всегда останавливаем всплытие, чтобы панорамирование
+                          // карты (App.onPointerDown) не перехватывало клики по звёздам
                           e.stopPropagation();
+                          if (isDrawing) return;
                           dragRef.current = {
                             id: s.id,
                             startX: e.clientX,
