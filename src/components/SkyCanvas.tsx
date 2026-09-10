@@ -9,7 +9,9 @@ type Layer = {
   a: number;
   tw: number;
   ph: number;
-  hue: number;
+  /** базовый цвет без альфы — кэшируется, чтобы не строить строки каждый кадр */
+  c1: string;
+  c2: string;
 };
 
 type Shooting = {
@@ -25,6 +27,18 @@ const LAYERS = [
   { count: 320, parallax: 0.06, rMin: 0.35, rMax: 0.95, aMin: 0.18, aMax: 0.55 },
   { count: 170, parallax: 0.16, rMin: 0.6, rMax: 1.5, aMin: 0.25, aMax: 0.75 },
   { count: 70, parallax: 0.34, rMin: 1.0, rMax: 2.2, aMin: 0.35, aMax: 0.95 },
+];
+
+const TAU = Math.PI * 2;
+/** запас вокруг вьюпорта для запечённой туманности (сдвиг параллакса не более ~75px) */
+const NEB_PAD = 160;
+
+const NEB_BLOBS: [number, number, number, string][] = [
+  [0.22, 0.28, 0.62, "rgba(74,86,190,0.30)"],
+  [0.78, 0.24, 0.5, "rgba(150,80,190,0.20)"],
+  [0.55, 0.82, 0.66, "rgba(40,110,170,0.20)"],
+  [0.12, 0.78, 0.42, "rgba(190,110,140,0.13)"],
+  [0.9, 0.66, 0.44, "rgba(70,160,190,0.14)"],
 ];
 
 export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> }) {
@@ -46,6 +60,15 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
     let last = performance.now();
     let t = 0;
 
+    let bgGrad: CanvasGradient | null = null;
+    let vignetteGrad: CanvasGradient | null = null;
+
+    // туманность рисуется один раз на размер и затем просто копируется с параллаксом
+    const nebCanvas = document.createElement("canvas");
+    const nebCtx = nebCanvas.getContext("2d");
+    let nebW = 0;
+    let nebH = 0;
+
     const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
     const build = () => {
@@ -53,6 +76,7 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
         const arr: Layer[] = [];
         const n = Math.round((cfg.count * (w * h)) / (1440 * 900));
         for (let i = 0; i < Math.max(40, n); i++) {
+          const hue = Math.random() < 0.18 ? rand(200, 260) : rand(35, 60);
           arr.push({
             x: Math.random(),
             y: Math.random(),
@@ -60,7 +84,8 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
             a: rand(cfg.aMin, cfg.aMax),
             tw: rand(0.4, 1.7),
             ph: Math.random() * Math.PI * 2,
-            hue: Math.random() < 0.18 ? rand(200, 260) : rand(35, 60),
+            c1: `hsl(${hue}, 90%, ${hue > 150 ? 82 : 92}%)`,
+            c2: `hsl(${hue}, 90%, 85%)`,
           });
         }
         return arr;
@@ -74,28 +99,38 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      build();
-    };
 
-    const drawNebula = (ox: number, oy: number) => {
-      const blobs: [number, number, number, string][] = [
-        [0.22, 0.28, 0.62, "rgba(74,86,190,0.30)"],
-        [0.78, 0.24, 0.5, "rgba(150,80,190,0.20)"],
-        [0.55, 0.82, 0.66, "rgba(40,110,170,0.20)"],
-        [0.12, 0.78, 0.42, "rgba(190,110,140,0.13)"],
-        [0.9, 0.66, 0.44, "rgba(70,160,190,0.14)"],
-      ];
-      const base = Math.max(w, h);
-      for (const [bx, by, br, color] of blobs) {
-        const cx = bx * w + ox * 0.5;
-        const cy = by * h + oy * 0.5;
-        const r = br * base;
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        g.addColorStop(0, color);
-        g.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, w, h);
+      // статичные градиенты создаём один раз на размер, а не каждый кадр
+      bgGrad = ctx.createLinearGradient(0, 0, w * 0.4, h);
+      bgGrad.addColorStop(0, "#070a1a");
+      bgGrad.addColorStop(0.5, "#050713");
+      bgGrad.addColorStop(1, "#03040c");
+
+      vignetteGrad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.78);
+      vignetteGrad.addColorStop(0, "rgba(0,0,0,0)");
+      vignetteGrad.addColorStop(1, "rgba(0,0,0,0.62)");
+
+      nebW = w + NEB_PAD * 2;
+      nebH = h + NEB_PAD * 2;
+      nebCanvas.width = Math.floor(nebW * dpr);
+      nebCanvas.height = Math.floor(nebH * dpr);
+      if (nebCtx) {
+        nebCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        nebCtx.clearRect(0, 0, nebW, nebH);
+        const base = Math.max(w, h);
+        for (const [bx, by, br, color] of NEB_BLOBS) {
+          const cx = bx * w + NEB_PAD;
+          const cy = by * h + NEB_PAD;
+          const r = br * base;
+          const g = nebCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+          g.addColorStop(0, color);
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          nebCtx.fillStyle = g;
+          nebCtx.fillRect(0, 0, nebW, nebH);
+        }
       }
+
+      build();
     };
 
     const frame = (now: number) => {
@@ -105,42 +140,44 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
 
       const cam = cameraRef.current ?? { x: 0, y: 0, zoom: 1 };
 
-      ctx.clearRect(0, 0, w, h);
-      const bg = ctx.createLinearGradient(0, 0, w * 0.4, h);
-      bg.addColorStop(0, "#070a1a");
-      bg.addColorStop(0.5, "#050713");
-      bg.addColorStop(1, "#03040c");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, w, h);
+      if (bgGrad) {
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
 
       const ox = -cam.x * 0.05;
       const oy = -cam.y * 0.05;
-      drawNebula(ox, oy);
+      ctx.drawImage(nebCanvas, ox * 0.5 - NEB_PAD, oy * 0.5 - NEB_PAD, nebW, nebH);
 
-      layers.forEach((arr, li) => {
+      const zoomScale = 0.85 + cam.zoom * 0.2;
+      for (let li = 0; li < layers.length; li++) {
+        const arr = layers[li];
         const p = LAYERS[li].parallax;
         const sx = -cam.x * p;
         const sy = -cam.y * p;
-        for (const s of arr) {
+        for (let i = 0; i < arr.length; i++) {
+          const s = arr[i];
           let x = (s.x * w + sx) % w;
           let y = (s.y * h + sy) % h;
           if (x < 0) x += w;
           if (y < 0) y += h;
-          const twinkle = 0.62 + 0.38 * Math.sin(t * s.tw + s.ph);
-          const alpha = s.a * twinkle;
-          const r = s.r * (0.85 + cam.zoom * 0.2);
+          const alpha = s.a * (0.62 + 0.38 * Math.sin(t * s.tw + s.ph));
+          const r = s.r * zoomScale;
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = s.c1;
           ctx.beginPath();
-          ctx.fillStyle = `hsla(${s.hue}, 90%, ${s.hue > 150 ? 82 : 92}%, ${alpha})`;
-          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.arc(x, y, r, 0, TAU);
           ctx.fill();
           if (r > 1.4) {
+            ctx.globalAlpha = alpha * 0.13;
+            ctx.fillStyle = s.c2;
             ctx.beginPath();
-            ctx.fillStyle = `hsla(${s.hue}, 90%, 85%, ${alpha * 0.13})`;
-            ctx.arc(x, y, r * 4.5, 0, Math.PI * 2);
+            ctx.arc(x, y, r * 4.5, 0, TAU);
             ctx.fill();
           }
         }
-      });
+      }
+      ctx.globalAlpha = 1;
 
       // shooting stars
       nextShoot -= dt;
@@ -178,11 +215,10 @@ export default function SkyCanvas({ cameraRef }: { cameraRef: RefObject<Camera> 
       }
 
       // vignette
-      const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.78);
-      vg.addColorStop(0, "rgba(0,0,0,0)");
-      vg.addColorStop(1, "rgba(0,0,0,0.62)");
-      ctx.fillStyle = vg;
-      ctx.fillRect(0, 0, w, h);
+      if (vignetteGrad) {
+        ctx.fillStyle = vignetteGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
 
       raf = requestAnimationFrame(frame);
     };

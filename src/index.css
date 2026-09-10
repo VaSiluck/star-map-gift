@@ -150,3 +150,20 @@ body {
     animation: none !important;
   }
 }
+
+/* ---------- Firefox performance ----------
+   Firefox пересчитывает backdrop-blur каждый кадр, пока под элементом
+   анимируется звёздный canvas. Стеклянные поверхности и так почти
+   непрозрачны (86–94%), поэтому отказ от размытия визуально почти
+   незаметен, но убирает основную причину падения FPS.
+   Chromium и Safari сохраняют размытие. */
+@supports (-moz-appearance: none) {
+  .glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
