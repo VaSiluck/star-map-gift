@@ -5,7 +5,6 @@ import MemoryWindow, { WIN_W, type WindowState } from "./components/MemoryWindow
 import ConstellationPanel from "./components/ConstellationPanel";
 import Intro from "./components/Intro";
 import FinalLetter from "./components/FinalLetter";
-import SpecSheet from "./components/SpecSheet";
 import EditorPanel from "./components/editor/EditorPanel";
 import { useData } from "./data/store";
 import { WORLD_H, WORLD_W, type Star } from "./data/memories";
@@ -64,7 +63,6 @@ export default function App() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [showSpec, setShowSpec] = useState(false);
   const [showFinal, setShowFinal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(() => {
@@ -218,27 +216,15 @@ export default function App() {
   const wasDragged = useCallback(() => dragRef.current.moved > 5, []);
 
   /* ---------- windows ---------- */
-  const openStar = useCallback(
+  /** поднять/открыть окно звезды (позиционируется рядом со звездой) */
+  const raiseWindow = useCallback(
     (id: string) => {
-      if (id === polaris.id) {
-        setShowFinal(true);
-        return;
-      }
       const entry = starIndex[id];
       if (!entry) return;
-      const { star, constellation } = entry;
-
-      setDiscovered((prev) => {
-        if (prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-      setActive(constellation.id);
-
+      const { star } = entry;
+      zRef.current += 1;
       setWindows((prev) => {
         const existing = prev.find((w) => w.starId === id);
-        zRef.current += 1;
         if (existing) {
           return prev.map((w) => (w.starId === id ? { ...w, z: zRef.current, collapsed: false } : w));
         }
@@ -253,7 +239,28 @@ export default function App() {
         return [...prev.filter((w) => w.starId !== id), win].slice(-limit);
       });
     },
-    [isMobile, polaris.id, size.w, size.h, starIndex],
+    [isMobile, size.w, size.h, starIndex],
+  );
+
+  const openStar = useCallback(
+    (id: string) => {
+      if (id === polaris.id) {
+        setShowFinal(true);
+        return;
+      }
+      if (!starIndex[id]) return;
+      const { constellation } = starIndex[id];
+
+      setDiscovered((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setActive(constellation.id);
+      raiseWindow(id);
+    },
+    [polaris.id, raiseWindow, starIndex],
   );
 
   const selectFromPanel = useCallback(
@@ -302,9 +309,13 @@ export default function App() {
         flyTo(polaris.x, polaris.y, 1, 800);
         return;
       }
-      flyTo(starIndex[id].star.x, starIndex[id].star.y, Math.max(cameraRef.current.zoom, 1.1), 700);
+      const entry = starIndex[id];
+      if (!entry) return;
+      // подлетаем к звезде и открываем её окно — чтобы сразу править состав вживую
+      flyTo(entry.star.x, entry.star.y, Math.max(cameraRef.current.zoom, 0.95), 750);
+      window.setTimeout(() => raiseWindow(id), 700);
     },
-    [flyTo, polaris.x, polaris.y, starIndex],
+    [flyTo, polaris.x, polaris.y, starIndex, raiseWindow],
   );
 
   const handleDragStar = useCallback(
@@ -442,12 +453,6 @@ export default function App() {
             </div>
           </div>
           <button
-            onClick={() => setShowSpec(true)}
-            className="grain glass rounded-xl border border-white/12 px-3.5 py-2.5 text-[12px] font-medium text-white/70 transition hover:text-white"
-          >
-            ТЗ
-          </button>
-          <button
             onClick={reset}
             className="grain glass hidden h-10 w-10 place-items-center rounded-xl border border-white/12 text-white/50 transition hover:text-white sm:grid"
             aria-label="Сбросить прогресс"
@@ -547,7 +552,6 @@ export default function App() {
 
       {showFinal && <FinalLetter polaris={polaris} onClose={() => setShowFinal(false)} />}
       {showIntro && <Intro constellations={constellations} totalStars={TOTAL_STARS} onStart={startIntro} />}
-      {showSpec && <SpecSheet onClose={() => setShowSpec(false)} />}
     </div>
   );
 }

@@ -259,6 +259,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 //  Автосгенерировано редактором открытки (режим ?edit).
 //  Не редактируй вручную — правь в браузере и экспортируй снова.
 // ═══════════════════════════════════════════════════════
+export type StarBlocks = {
+  date?: boolean;
+  photo?: boolean;
+  caption?: boolean;
+  story?: boolean;
+  storyLabel?: boolean;
+  gift?: boolean;
+  thought?: boolean;
+  meta?: boolean;
+};
+
 export type Star = {
   id: string;
   title: string;
@@ -271,6 +282,8 @@ export type Star = {
   story: string;
   gift: string;
   thought: string;
+  /** какие блоки окна показывать (по умолчанию все) */
+  blocks?: StarBlocks;
 };
 
 export type Constellation = {

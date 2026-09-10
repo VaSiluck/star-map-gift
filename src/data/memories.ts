@@ -1,3 +1,23 @@
+/** Какие блоки окна звезды показывать. Отсутствующие ключи = блок показан (по умолчанию всё видно). */
+export type StarBlocks = {
+  /** дата / период в шапке окна */
+  date?: boolean;
+  /** фотография */
+  photo?: boolean;
+  /** подпись под фото */
+  caption?: boolean;
+  /** блок «Как это было» */
+  story?: boolean;
+  /** заголовок «Как это было» над текстом (по умолчанию показан) */
+  storyLabel?: boolean;
+  /** блок «Что ты мне принесла» */
+  gift?: boolean;
+  /** строка-цитата «Мысль вслух» */
+  thought?: boolean;
+  /** служебная строка внизу (latin · id · яркость) */
+  meta?: boolean;
+};
+
 export type Star = {
   id: string;
   title: string;
@@ -16,6 +36,8 @@ export type Star = {
   gift: string;
   /** мысль вслух, короткая строка */
   thought: string;
+  /** какие блоки окна показывать (редактируется в режиме ?edit прямо в окне) */
+  blocks?: StarBlocks;
 };
 
 export type Constellation = {
