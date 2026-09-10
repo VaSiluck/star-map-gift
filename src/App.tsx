@@ -80,6 +80,8 @@ export default function App() {
   const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
   const animRef = useRef<number | null>(null);
   const finaleRef = useRef(false);
+  const pendingCamRef = useRef<Camera | null>(null);
+  const camRafRef = useRef<number | null>(null);
 
   const allFound = discovered.size >= TOTAL_STARS && TOTAL_STARS > 0;
 
@@ -113,9 +115,36 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * Обновляет камеру немедленно в ref (для canvas и вычислений), а состояние
+   * React — не чаще одного раза на кадр. Так панорамирование/пинч не вызывают
+   * по нескольку полных ре-рендеров на одно движение указателя.
+   */
+  const scheduleCamera = useCallback((c: Camera) => {
+    cameraRef.current = c;
+    pendingCamRef.current = c;
+    if (camRafRef.current == null) {
+      camRafRef.current = requestAnimationFrame(() => {
+        camRafRef.current = null;
+        const p = pendingCamRef.current;
+        pendingCamRef.current = null;
+        if (p) setCamera(p);
+      });
+    }
+  }, []);
+
+  const cancelPendingCamera = useCallback(() => {
+    if (camRafRef.current != null) {
+      cancelAnimationFrame(camRafRef.current);
+      camRafRef.current = null;
+    }
+    pendingCamRef.current = null;
+  }, []);
+
   const flyTo = useCallback(
     (x: number, y: number, zoom?: number, dur = 900) => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
+      cancelPendingCamera();
       const from = { ...cameraRef.current };
       const to = clampCam({ x, y, zoom: zoom ?? cameraRef.current.zoom });
       const t0 = performance.now();
@@ -131,23 +160,25 @@ export default function App() {
       };
       animRef.current = requestAnimationFrame(step);
     },
-    [clampCam],
+    [cancelPendingCamera, clampCam],
   );
 
   const zoomAt = useCallback(
     (factor: number, mx: number, my: number) => {
-      setCamera((c) => {
-        const nz = clamp(c.zoom * factor, MIN_Z, MAX_Z);
-        const wx = c.x + (mx - size.w / 2) / c.zoom;
-        const wy = c.y + (my - size.h / 2) / c.zoom;
-        return clampCam({
-          zoom: nz,
-          x: wx - (mx - size.w / 2) / nz,
-          y: wy - (my - size.h / 2) / nz,
-        });
+      cancelPendingCamera();
+      const c = cameraRef.current;
+      const nz = clamp(c.zoom * factor, MIN_Z, MAX_Z);
+      const wx = c.x + (mx - size.w / 2) / c.zoom;
+      const wy = c.y + (my - size.h / 2) / c.zoom;
+      const next = clampCam({
+        zoom: nz,
+        x: wx - (mx - size.w / 2) / nz,
+        y: wy - (my - size.h / 2) / nz,
       });
+      cameraRef.current = next;
+      setCamera(next);
     },
-    [clampCam, size.w, size.h],
+    [cancelPendingCamera, clampCam, size.w, size.h],
   );
 
   /* ---------- wheel zoom ---------- */
@@ -192,7 +223,7 @@ export default function App() {
       const [a, b] = [...pointersRef.current.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       const nz = clamp((pinchRef.current.zoom * d) / pinchRef.current.dist, MIN_Z, MAX_Z);
-      setCamera((c) => clampCam({ ...c, zoom: nz }));
+      scheduleCamera(clampCam({ ...cameraRef.current, zoom: nz }));
       return;
     }
     const d = dragRef.current;
@@ -201,13 +232,21 @@ export default function App() {
     const dy = e.clientY - d.sy;
     d.moved = Math.max(d.moved, Math.hypot(dx, dy));
     const z = cameraRef.current.zoom;
-    setCamera(clampCam({ x: d.cx - dx / z, y: d.cy - dy / z, zoom: z }));
+    scheduleCamera(clampCam({ x: d.cx - dx / z, y: d.cy - dy / z, zoom: z }));
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
     pointersRef.current.delete(e.pointerId);
     if (pointersRef.current.size < 2) pinchRef.current = null;
     dragRef.current.active = false;
+    if (camRafRef.current != null) {
+      cancelAnimationFrame(camRafRef.current);
+      camRafRef.current = null;
+    }
+    if (pendingCamRef.current) {
+      setCamera(pendingCamRef.current);
+      pendingCamRef.current = null;
+    }
     window.setTimeout(() => {
       dragRef.current.moved = 0;
     }, 60);
@@ -287,6 +326,8 @@ export default function App() {
   );
 
   const closeWindow = useCallback((key: string) => setWindows((p) => p.filter((w) => w.key !== key)), []);
+  const closePanel = useCallback(() => setPanelOpen(false), []);
+  const closeFinal = useCallback(() => setShowFinal(false), []);
   const focusWindow = useCallback((key: string) => {
     zRef.current += 1;
     const z = zRef.current;
@@ -525,7 +566,7 @@ export default function App() {
         active={active}
         constellations={constellations}
         totalStars={TOTAL_STARS}
-        onClose={() => setPanelOpen(false)}
+        onClose={closePanel}
         onFlyToConstellation={flyToConstellation}
         onSelectStar={selectFromPanel}
       />
@@ -550,7 +591,7 @@ export default function App() {
         );
       })}
 
-      {showFinal && <FinalLetter polaris={polaris} onClose={() => setShowFinal(false)} />}
+      {showFinal && <FinalLetter polaris={polaris} onClose={closeFinal} />}
       {showIntro && <Intro constellations={constellations} totalStars={TOTAL_STARS} onStart={startIntro} />}
     </div>
   );

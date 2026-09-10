@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { Constellation, Star, StarBlocks } from "../data/memories";
 import { useData } from "../data/store";
 
@@ -35,7 +35,7 @@ const BLOCK_DEFS: { key: keyof StarBlocks; label: string; hint: string }[] = [
   { key: "meta", label: "подвал", hint: "служебная строка: latin · id · яркость" },
 ];
 
-export default function MemoryWindow({
+export default memo(function MemoryWindow({
   win,
   star,
   constellation,
@@ -293,4 +293,4 @@ export default function MemoryWindow({
       )}
     </div>
   );
-}
+});

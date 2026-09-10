@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Constellation } from "../data/memories";
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
   onSelectStar: (id: string) => void;
 };
 
-export default function ConstellationPanel({
+export default memo(function ConstellationPanel({
   open,
   isMobile,
   discovered,
@@ -139,4 +140,4 @@ export default function ConstellationPanel({
       </aside>
     </>
   );
-}
+});

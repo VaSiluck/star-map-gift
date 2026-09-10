@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { useData } from "../../data/store";
 import StarForm, { NewStarForm } from "./StarForm";
 import ConstellationForm, { NewConstellationForm } from "./ConstellationForm";
@@ -13,7 +13,7 @@ type Mode =
   | { kind: "newConstellation" }
   | { kind: "polaris" };
 
-export default function EditorPanel() {
+export default memo(function EditorPanel() {
   const {
     constellations,
     polaris,
@@ -281,4 +281,4 @@ export default function EditorPanel() {
       </aside>
     </>
   );
-}
+});
