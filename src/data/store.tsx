@@ -27,6 +27,20 @@ import {
 
 const LS_KEY = "starmap.data.v1";
 
+/**
+ * Подпись исходного контента из memories.ts.
+ *
+ * Считается один раз при загрузке модуля. Если файл memories.ts пересобрали,
+ * подпись меняется — и старый черновик из localStorage автоматически
+ * игнорируется, чтобы свежий build всегда побеждал.
+ */
+const DEFAULT_SIGNATURE = (() => {
+  const s = JSON.stringify({ constellations: defaultConstellations, polaris: defaultPolaris });
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+})();
+
 export type DataShape = {
   constellations: Constellation[];
   polaris: Polaris;
@@ -76,8 +90,10 @@ function loadSaved(): DataShape | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<DataShape>;
+    const parsed = JSON.parse(raw) as Partial<DataShape> & { base?: string };
     if (!Array.isArray(parsed.constellations) || !parsed.polaris) return null;
+    // memories.ts пересобрали — черновик устарел, берём свежий контент из файла.
+    if (parsed.base !== DEFAULT_SIGNATURE) return null;
     return { constellations: parsed.constellations, polaris: parsed.polaris };
   } catch {
     return null;
@@ -96,9 +112,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   dataRef.current = data;
 
   // Черновик автора живёт в localStorage — чтобы не потерять правки при F5.
+  // Вместе с данными храним подпись memories.ts: после пересборки старый
+  // черновик отбрасывается и на сайте оказывается последняя версия файла.
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(data));
+      localStorage.setItem(LS_KEY, JSON.stringify({ ...data, base: DEFAULT_SIGNATURE }));
     } catch {
       /* ignore */
     }

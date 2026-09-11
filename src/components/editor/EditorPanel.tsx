@@ -230,7 +230,8 @@ export default memo(function EditorPanel() {
               <div className="flex flex-col gap-1.5">
                 <Btn onClick={exportMemoriesTs}>⬇ Скачать memories.ts</Btn>
                 <p className="text-[10.5px] leading-snug text-white/35">
-                  Положи файл в src/data/ (замени memories.ts), затем npm run build — и контент вшит в сайт.
+                  Положи файл в src/data/ (замени memories.ts), затем npm run build. После пересборки черновик в браузере
+                  сбросится сам — покажется новая версия файла.
                 </p>
                 <div className="mt-1 flex gap-1.5">
                   <Btn onClick={exportJson}>JSON</Btn>
